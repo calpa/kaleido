@@ -1,6 +1,5 @@
 //! 64-bit difference hash (dHash): resample to 9x8 grayscale, compare horizontal neighbors.
 
-use image::GenericImageView;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
