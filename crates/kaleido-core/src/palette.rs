@@ -1,5 +1,6 @@
 //! Color palette extraction: k-means over a downsampled RGB pixel sample.
 
+use crate::error::KaleidoResult;
 use image::GenericImageView;
 use serde::Serialize;
 use std::path::Path;
@@ -18,16 +19,35 @@ pub struct Palette {
     pub swatches: Vec<Swatch>,
 }
 
+impl Swatch {
+    /// Lowercase hex color string, e.g. "#1a2b3c".
+    pub fn hex(&self) -> String {
+        format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
+    }
+}
+
 impl Palette {
-    /// Hex string of the dominant color, e.g. "#1a2b3c".
-    pub fn dominant_hex(&self) -> String {
-        let s = &self.swatches[0];
-        format!("#{:02x}{:02x}{:02x}", s.r, s.g, s.b)
+    /// Hex string of the dominant color, e.g. `Some("#1a2b3c")`; `None`
+    /// for an empty palette.
+    pub fn dominant_hex(&self) -> Option<String> {
+        let s = self.swatches.first()?;
+        Some(format!("#{:02x}{:02x}{:02x}", s.r, s.g, s.b))
+    }
+
+    /// Export as CSS custom properties, one `--c<i>` per swatch:
+    /// `:root {` / `  --c1: #1a2b3c;` / ... / `}`.
+    pub fn to_css_vars(&self) -> String {
+        let mut css = String::from(":root {\n");
+        for (i, swatch) in self.swatches.iter().enumerate() {
+            css.push_str(&format!("  --c{}: {};\n", i + 1, swatch.hex()));
+        }
+        css.push('}');
+        css
     }
 }
 
 /// Extract a `k`-color palette from an image file.
-pub fn palette_file(path: &Path, k: u8) -> anyhow::Result<Palette> {
+pub fn palette_file(path: &Path, k: u8) -> KaleidoResult<Palette> {
     let img = image::open(path)?;
     Ok(palette(&img, k))
 }
@@ -62,6 +82,7 @@ pub fn palette(img: &image::DynamicImage, k: u8) -> Palette {
         b.share
             .partial_cmp(&a.share)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| (a.r, a.g, a.b).cmp(&(b.r, b.g, b.b)))
     });
     Palette { swatches }
 }
@@ -164,6 +185,35 @@ mod tests {
             image::Rgb([26u8, 43, 60])
         }));
         let p = palette(&img, 1);
-        assert_eq!(p.dominant_hex(), "#1a2b3c");
+        assert_eq!(p.dominant_hex(), Some("#1a2b3c".to_string()));
+    }
+
+    #[test]
+    fn css_vars_cover_c1_through_ck() {
+        let img = image::DynamicImage::from(image::ImageBuffer::from_fn(64, 64, |x, _| {
+            let band = (x / 16) as u8;
+            image::Rgb([band * 60, 255 - band * 40, 90 + band * 30])
+        }));
+        let css = palette(&img, 3).to_css_vars();
+        assert!(css.starts_with(":root {\n"), "got: {css}");
+        assert!(css.ends_with('}'));
+        assert!(css.contains("  --c1: #"));
+        assert!(css.contains("  --c2: #"));
+        assert!(css.contains("  --c3: #"));
+        assert!(!css.contains("--c4"), "got: {css}");
+    }
+
+    #[test]
+    fn json_output_is_deterministic() {
+        let img = image::DynamicImage::from(image::ImageBuffer::from_fn(64, 64, |x, y| {
+            image::Rgb([(x * 4) as u8, (y * 3) as u8, ((x + y) * 2) as u8])
+        }));
+        let a = serde_json::to_string(&palette(&img, 5)).unwrap();
+        let b = serde_json::to_string(&palette(&img, 5)).unwrap();
+        assert_eq!(a, b);
+        // Field order is fixed: swatches array first, then r/g/b per swatch.
+        assert!(a.starts_with(r#"{"swatches":[{"r":"#), "got: {a}");
+        // k clamps into 1..=16.
+        assert_eq!(palette(&img, 0).swatches.len(), 1);
     }
 }
