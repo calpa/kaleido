@@ -295,6 +295,7 @@ dependencies = [
  "image",
  "kaleido-core",
  "rayon",
+ "serde",
  "serde_json",
 ]
 
@@ -302,7 +303,6 @@ dependencies = [
 name = "kaleido-core"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "image",
  "kamadak-exif",
  "rayon",
