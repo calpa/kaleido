@@ -7,6 +7,7 @@
 //! `dupes` command is built on.
 
 use crate::phash::Hash64;
+use crate::unionfind::UnionFind;
 
 /// Group indices of perceptually similar hashes.
 ///
@@ -51,46 +52,6 @@ pub fn cluster_similar(hashes: &[Hash64], threshold: u32, min_size: usize) -> Ve
         .collect();
     groups.sort_by_key(|group| group[0]);
     groups
-}
-
-/// Disjoint-set forest with path halving and union by rank.
-#[derive(Debug)]
-struct UnionFind {
-    parent: Vec<usize>,
-    rank: Vec<u8>,
-}
-
-impl UnionFind {
-    fn new(n: usize) -> Self {
-        Self {
-            parent: (0..n).collect(),
-            rank: vec![0; n],
-        }
-    }
-
-    fn find(&mut self, mut x: usize) -> usize {
-        while self.parent[x] != x {
-            self.parent[x] = self.parent[self.parent[x]];
-            x = self.parent[x];
-        }
-        x
-    }
-
-    fn union(&mut self, a: usize, b: usize) {
-        let ra = self.find(a);
-        let rb = self.find(b);
-        if ra == rb {
-            return;
-        }
-        match self.rank[ra].cmp(&self.rank[rb]) {
-            std::cmp::Ordering::Less => self.parent[ra] = rb,
-            std::cmp::Ordering::Greater => self.parent[rb] = ra,
-            std::cmp::Ordering::Equal => {
-                self.parent[rb] = ra;
-                self.rank[ra] += 1;
-            }
-        }
-    }
 }
 
 #[cfg(test)]
