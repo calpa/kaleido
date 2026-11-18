@@ -130,3 +130,52 @@ fn palette_css_flag_prints_css_variables() {
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn ocr_fake_engine_prints_json_blocks_with_evidence() {
+    let dir = temp_dir("ocr-fake");
+    let img = write_png(&dir, "a.png", [255, 255, 255]);
+    let out = kaleido(&["ocr", img.to_str().unwrap(), "--engine", "fake", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let blocks: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let blocks = blocks.as_array().unwrap();
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0]["text"], "kaleido fake ocr");
+    assert_eq!(blocks[0]["model"], "fake");
+    assert_eq!(blocks[0]["evidence"], "low");
+
+    let text = kaleido(&["ocr", img.to_str().unwrap()]).output().unwrap();
+    assert!(text.status.success());
+    let line = String::from_utf8(text.stdout).unwrap();
+    assert!(line.starts_with("low"), "{line}");
+    assert!(line.contains("kaleido fake ocr"), "{line}");
+}
+
+#[test]
+fn ocr_unknown_engine_is_runtime_error() {
+    let dir = temp_dir("ocr-unknown");
+    let img = write_png(&dir, "a.png", [0, 0, 0]);
+    let out = kaleido(&["ocr", img.to_str().unwrap(), "--engine", "nope"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("unknown engine"));
+}
+
+#[cfg(not(feature = "engine-ort"))]
+#[test]
+fn ocr_paddle_without_feature_explains_how_to_enable() {
+    let dir = temp_dir("ocr-nofeature");
+    let img = write_png(&dir, "a.png", [0, 0, 0]);
+    let out = kaleido(&["ocr", img.to_str().unwrap(), "--engine", "ppocrv5"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("engine-ort"));
+}

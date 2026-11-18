@@ -10,6 +10,11 @@ repository.workspace = true
 name = "kaleido"
 path = "src/main.rs"
 
+[features]
+default = []
+engine-ort = ["kaleido-core/engine-ort"]
+engine-ort-coreml = ["kaleido-core/engine-ort-coreml"]
+
 [dependencies]
 kaleido-core = { path = "../kaleido-core" }
 anyhow.workspace = true

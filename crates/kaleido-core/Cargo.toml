@@ -6,14 +6,22 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+# PP-OCRv5 mobile engine on ONNX Runtime (CPU).
+engine-ort = ["dep:ort"]
+# Additionally register the CoreML execution provider (macOS); falls back to CPU.
+engine-ort-coreml = ["engine-ort", "ort/coreml"]
+
 [dependencies]
 image.workspace = true
 kamadak-exif.workspace = true
+ort = { workspace = true, optional = true }
 rayon.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 unicode-normalization = "0.1"
 walkdir.workspace = true
 
-[dev-dependencies]
-serde_json.workspace = true
