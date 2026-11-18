@@ -7,12 +7,17 @@
 
 pub mod cluster;
 pub mod error;
+pub mod models;
+pub mod ocr;
 pub mod palette;
 pub mod phash;
 pub mod scan;
+mod unionfind;
 
 pub use cluster::cluster_similar;
 pub use error::{KaleidoError, KaleidoResult};
+pub use models::{readiness_all, MachineProfile, ModelSpec, Verdict};
+pub use ocr::{ensemble, EngineBlock, EngineProfile, Evidence, OcrBlock, ScriptSet};
 pub use palette::{palette, palette_file, Palette, Swatch};
 pub use phash::{dhash, dhash_file, phash, phash_file, Hash64};
 pub use scan::{dms_to_decimal, exif_from_file, scan, Exif, Gps, ImageEntry, ScanStats};
