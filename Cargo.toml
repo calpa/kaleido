@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/calpa/kaleido"
-rust-version = "1.85"
+rust-version = "1.95"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -17,8 +17,11 @@ serde_json = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "tiff", "bmp"] }
 walkdir = "2"
 rayon = "1"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 kamadak-exif = "0.6"
+sha2 = "0.10"
+# Heavy inference runtime: only pulled in by the `engine-ort` feature.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-rustls"] }
 
 [profile.release]
 lto = true

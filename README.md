@@ -64,7 +64,26 @@ kaleido scan ~/Pictures
 kaleido scan <DIR>                     # list supported images as JSON
 kaleido similar <IMAGE> <DIR>          # find perceptually similar images
 kaleido palette <IMAGE> --colors 5     # extract a k-color palette
+kaleido ocr <IMAGE> --engine fake      # OCR through the evidence-graded ensemble (--json)
 ```
+
+### Real OCR engines (opt-in)
+
+The default build ships only the `fake` engine, so it needs no model
+downloads. PP-OCRv5 mobile (ONNX Runtime via `ort`) is behind a feature:
+
+```bash
+scripts/fetch-models.sh paddle-ocrv5-mobile   # ~21 MB into models/, sha256-verified
+cargo install --path crates/kaleido-cli --features engine-ort   # or engine-ort-coreml on macOS
+kaleido ocr photo.png --engine ppocrv5 --json
+cargo test -p kaleido-core --features engine-ort --test ppocr_real -- --nocapture
+```
+
+`--engine` can be repeated to ensemble several engines; `--models <DIR>` /
+`KALEIDO_MODELS` relocate the model store (see `models/README.md`). `ort`
+downloads a prebuilt ONNX Runtime that needs glibc ≥ 2.38 on Linux; on older
+distros point `ORT_LIB_LOCATION` at an ONNX Runtime ≥ 1.17 `lib/` directory
+and set `ORT_PREFER_DYNAMIC_LINK=1`.
 
 ## Architecture
 

@@ -6,18 +6,25 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod cluster;
+pub mod engine;
 pub mod error;
+pub mod model_store;
 pub mod models;
 pub mod ocr;
 pub mod palette;
 pub mod phash;
+pub mod ppocr;
 pub mod scan;
 mod unionfind;
 
 pub use cluster::cluster_similar;
+pub use engine::{run_ensemble, FakeEngine, OcrEngine};
 pub use error::{KaleidoError, KaleidoResult};
+pub use model_store::{FileState, Manifest, ModelStatus, ModelStore};
 pub use models::{readiness_all, MachineProfile, ModelSpec, Verdict};
 pub use ocr::{ensemble, EngineBlock, EngineProfile, Evidence, OcrBlock, ScriptSet};
 pub use palette::{palette, palette_file, Palette, Swatch};
 pub use phash::{dhash, dhash_file, phash, phash_file, Hash64};
+#[cfg(feature = "engine-ort")]
+pub use ppocr::PaddleOcrV5;
 pub use scan::{dms_to_decimal, exif_from_file, scan, Exif, Gps, ImageEntry, ScanStats};

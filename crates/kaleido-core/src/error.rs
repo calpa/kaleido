@@ -14,6 +14,12 @@ pub enum KaleidoError {
     /// Structural problem with caller-supplied input.
     #[error("invalid input: {0}")]
     InvalidInput(String),
+    /// Model files missing, corrupted, or failing checksum verification.
+    #[error("model error: {0}")]
+    Model(String),
+    /// OCR engine failure (unknown engine, runtime/inference error).
+    #[error("engine error: {0}")]
+    Engine(String),
 }
 
 /// Convenience alias for results yielding [`KaleidoError`].
