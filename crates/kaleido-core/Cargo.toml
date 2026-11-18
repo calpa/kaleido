@@ -1,0 +1,19 @@
+[package]
+name = "kaleido-core"
+description = "Image analysis core: scanning, perceptual hashing, palette extraction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+image.workspace = true
+walkdir.workspace = true
+rayon.workspace = true
+kamadak-exif.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

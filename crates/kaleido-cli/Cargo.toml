@@ -1,0 +1,19 @@
+[package]
+name = "kaleido-cli"
+description = "CLI for kaleido-core: scan, similar-image search, palette extraction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "kaleido"
+path = "src/main.rs"
+
+[dependencies]
+kaleido-core = { path = "../kaleido-core" }
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+rayon.workspace = true
+image.workspace = true
