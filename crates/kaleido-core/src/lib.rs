@@ -16,6 +16,7 @@ pub mod phash;
 pub mod ppocr;
 pub mod scan;
 mod unionfind;
+pub mod web;
 
 pub use cluster::cluster_similar;
 pub use engine::{run_ensemble, FakeEngine, OcrEngine};
@@ -28,3 +29,7 @@ pub use phash::{dhash, dhash_file, phash, phash_file, Hash64};
 #[cfg(feature = "engine-ort")]
 pub use ppocr::PaddleOcrV5;
 pub use scan::{dms_to_decimal, exif_from_file, scan, Exif, Gps, ImageEntry, ScanStats};
+pub use web::{
+    DownloadConfig, Downloader, FetchManifest, FetchReport, ImageProvider, ItemOutcome,
+    ManifestEntry, OpenverseProvider, SearchResult, MAX_PAGE_SIZE, OPENVERSE_API,
+};
