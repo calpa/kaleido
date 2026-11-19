@@ -19,6 +19,10 @@ walkdir = "2"
 rayon = "1"
 clap = { version = "4", features = ["derive", "env"] }
 kamadak-exif = "0.6"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+async-trait = "0.1"
+wiremock = "0.6"
 sha2 = "0.10"
 # Heavy inference runtime: only pulled in by the `engine-ort` feature.
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-rustls"] }

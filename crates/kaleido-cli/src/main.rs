@@ -1,15 +1,18 @@
-//! kaleido CLI: scan / similar / palette / dupes / ocr commands over kaleido-core.
+//! kaleido CLI: scan / similar / palette / dupes / ocr / search / fetch
+//! commands over kaleido-core.
 //!
-//! Exit codes: 0 = success (and for `dupes`: groups found), 1 = `dupes` with
-//! no duplicate groups found, 2 = runtime error.
+//! Exit codes: 0 = success (and for `dupes`/`search`: something found, for
+//! `fetch`: at least one image saved), 1 = no results (or nothing saved),
+//! 2 = runtime error.
 
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use kaleido_core::{
-    cluster_similar, dhash_file, palette_file, phash_file, run_ensemble, scan, FakeEngine, Hash64,
-    OcrEngine,
+    cluster_similar, dhash_file, palette_file, phash_file, run_ensemble, scan, Downloader,
+    FakeEngine, Hash64, ImageProvider, ItemOutcome, OcrEngine, OpenverseProvider, SearchResult,
 };
 use serde::Serialize;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -109,6 +112,40 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Search the web for images (Openverse CC search); downloads nothing.
+    ///
+    /// Results are capped at 20 per request (Openverse anonymous limit).
+    /// Override the API root with $KALEIDO_OPENVERSE_API.
+    ///
+    /// Exit codes: 0 = results found, 1 = none found, 2 = error.
+    Search {
+        /// Search phrase.
+        #[arg(value_name = "QUERY")]
+        query: String,
+        /// Maximum number of results.
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
+        /// Emit machine-readable JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Search the web and download the images into a directory.
+    ///
+    /// Validates content type and size, skips perceptual duplicates (dHash),
+    /// and records every saved file in `<dir>/manifest.json`.
+    ///
+    /// Exit codes: 0 = at least one image saved, 1 = nothing saved, 2 = error.
+    Fetch {
+        /// Search phrase.
+        #[arg(value_name = "QUERY")]
+        query: String,
+        /// Target directory for images and manifest.json.
+        #[arg(long, value_name = "DIR")]
+        dir: PathBuf,
+        /// Maximum number of results to download.
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
+    },
 }
 
 fn main() -> ExitCode {
@@ -172,9 +209,89 @@ fn run(cli: Cli) -> anyhow::Result<u8> {
             models,
             json,
         } => ocr(&image, &engines, &models, json),
+        Command::Search { query, limit, json } => {
+            let provider = openverse_provider()?;
+            let results = block_on(provider.search(&query, limit), "web search failed")?;
+            search_output(&results, &query, json)
+        }
+        Command::Fetch { query, dir, limit } => {
+            let provider = openverse_provider()?;
+            let results = block_on(provider.search(&query, limit), "web search failed")?;
+            if results.is_empty() {
+                eprintln!("kaleido: no results for {query:?}");
+                return Ok(1);
+            }
+            let downloader = Downloader::new().context("download manager init failed")?;
+            let report = block_on(
+                downloader.fetch_all(&results, &dir, &query, provider.name()),
+                "fetch failed",
+            )?;
+            for outcome in &report.outcomes {
+                match outcome {
+                    ItemOutcome::Saved(e) => println!("saved {} ({})", e.file, e.image_url),
+                    ItemOutcome::Skipped { title, url, reason } => {
+                        let label = title.as_deref().unwrap_or(url);
+                        println!("skipped {url}: {reason} ({label})");
+                    }
+                }
+            }
+            println!(
+                "saved {} of {} result(s) into {}",
+                report.saved_count(),
+                results.len(),
+                dir.display()
+            );
+            Ok(if report.saved_count() > 0 { 0 } else { 1 })
+        }
     }
 }
 
+/// Openverse provider honoring $KALEIDO_OPENVERSE_API as API root override.
+fn openverse_provider() -> anyhow::Result<OpenverseProvider> {
+    match std::env::var("KALEIDO_OPENVERSE_API") {
+        Ok(base) => {
+            OpenverseProvider::with_base_url(&base).context("openverse provider init failed")
+        }
+        Err(_) => OpenverseProvider::new().context("openverse provider init failed"),
+    }
+}
+
+/// Run a core async API on a fresh tokio runtime, mapping core errors through
+/// anyhow with `what` as context.
+fn block_on<T>(
+    fut: impl Future<Output = kaleido_core::KaleidoResult<T>>,
+    what: &'static str,
+) -> anyhow::Result<T> {
+    tokio::runtime::Runtime::new()
+        .context("async runtime init failed")?
+        .block_on(fut)
+        .context(what)
+}
+
+/// Print search results; exit 1 when nothing was found.
+fn search_output(results: &[SearchResult], query: &str, json: bool) -> anyhow::Result<u8> {
+    if results.is_empty() {
+        eprintln!("kaleido: no results for {query:?}");
+        return Ok(1);
+    }
+    if json {
+        println!("{}", serde_json::to_string_pretty(results)?);
+        return Ok(0);
+    }
+    for (i, r) in results.iter().enumerate() {
+        let title = r.title.as_deref().unwrap_or("(untitled)");
+        let creator = r.creator.as_deref().unwrap_or("unknown");
+        println!(
+            "{}. {title} — {creator} [{}] via {}",
+            i + 1,
+            r.license,
+            r.source
+        );
+        println!("   page: {}", r.source_page);
+        println!("   image: {}", r.image_url);
+    }
+    Ok(0)
+}
 #[derive(Serialize)]
 struct DupesReport<'a> {
     algorithm: &'static str,

@@ -14,6 +14,21 @@ pub enum KaleidoError {
     /// Structural problem with caller-supplied input.
     #[error("invalid input: {0}")]
     InvalidInput(String),
+    /// Network failure during web search or download (DNS, timeout, bad status).
+    #[error("network error: {0}")]
+    Network(#[from] reqwest::Error),
+    /// JSON serialization/deserialization failure.
+    #[error("json error: {0}")]
+    Json(#[from] serde_json::Error),
+    /// Downloaded resource did not declare an image content type.
+    #[error("unexpected content type: {0}")]
+    ContentType(String),
+    /// Downloaded resource exceeded the configured size limit.
+    #[error("download too large: {size} bytes exceeds the {limit} byte limit")]
+    TooLarge { size: u64, limit: u64 },
+    /// Downloaded image is a perceptual duplicate of one already on disk.
+    #[error("duplicate image (dhash {0})")]
+    Duplicate(String),
     /// Model files missing, corrupted, or failing checksum verification.
     #[error("model error: {0}")]
     Model(String),

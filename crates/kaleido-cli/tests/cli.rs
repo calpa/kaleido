@@ -179,3 +179,166 @@ fn ocr_paddle_without_feature_explains_how_to_enable() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("engine-ort"));
 }
+
+// --- web search / fetch (against a wiremock Openverse) ---
+
+mod web {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn solid_png(rgb: [u8; 3]) -> Vec<u8> {
+        let mut buf = image::RgbImage::new(8, 8);
+        for px in buf.pixels_mut() {
+            *px = image::Rgb(rgb);
+        }
+        let mut out = Vec::new();
+        image::DynamicImage::ImageRgb8(buf)
+            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .unwrap();
+        out
+    }
+
+    fn openverse_body(image_url: &str) -> serde_json::Value {
+        serde_json::json!({
+            "results": [{
+                "id": "u1",
+                "title": "A test cat",
+                "creator": "tester",
+                "license": "cc0",
+                "license_version": "1.0",
+                "foreign_landing_url": "https://example.com/page",
+                "url": image_url,
+                "provider": "flickr",
+                "width": 8,
+                "height": 8
+            }]
+        })
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn search_json_lists_mock_results_exiting_zero() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/images/"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(openverse_body("https://cdn.example.com/a.jpg")),
+            )
+            .mount(&server)
+            .await;
+        let out = kaleido(&["search", "cats", "--limit", "5", "--json"])
+            .env("KALEIDO_OPENVERSE_API", server.uri())
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(0));
+        let stdout = String::from_utf8(out.stdout).unwrap();
+        let results: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(results[0]["id"], "u1");
+        assert_eq!(results[0]["image_url"], "https://cdn.example.com/a.jpg");
+        assert_eq!(results[0]["license"], "cc0 1.0");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn search_without_results_exits_one() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/images/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": []
+            })))
+            .mount(&server)
+            .await;
+        let out = kaleido(&["search", "nothing-here"])
+            .env("KALEIDO_OPENVERSE_API", server.uri())
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(1));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn fetch_downloads_into_dir_and_writes_manifest() {
+        let server = MockServer::start().await;
+        let png = solid_png([77, 33, 5]);
+        Mock::given(method("GET"))
+            .and(path("/images/"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(openverse_body(&format!("{}/img/a.jpg", server.uri()))),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/img/a.jpg"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(png.clone())
+                    .insert_header("Content-Type", "image/jpeg"),
+            )
+            .mount(&server)
+            .await;
+        let dir = temp_dir("fetch");
+        let out = kaleido(&[
+            "fetch",
+            "cats",
+            "--dir",
+            dir.to_str().unwrap(),
+            "--limit",
+            "3",
+        ])
+        .env("KALEIDO_OPENVERSE_API", server.uri())
+        .output()
+        .unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let saved: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(saved.iter().any(|f| f == "manifest.json"));
+        assert!(saved
+            .iter()
+            .any(|f| f.starts_with("kaleido-") && f.ends_with(".jpg")));
+        let manifest: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["images"][0]["provider"], "openverse");
+        assert_eq!(manifest["images"][0]["query"], "cats");
+        assert_eq!(
+            manifest["images"][0]["source_page"],
+            "https://example.com/page"
+        );
+        assert_eq!(
+            std::fs::read(dir.join(manifest["images"][0]["file"].as_str().unwrap())).unwrap(),
+            png
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn fetch_with_dead_image_source_exits_one() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/images/"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(openverse_body(&format!("{}/img/missing.png", server.uri()))),
+            )
+            .mount(&server)
+            .await;
+        let dir = temp_dir("fetch-dead");
+        let out = kaleido(&["fetch", "cats", "--dir", dir.to_str().unwrap()])
+            .env("KALEIDO_OPENVERSE_API", server.uri())
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(1), "nothing saved must exit 1");
+        let stdout = String::from_utf8(out.stdout).unwrap();
+        assert!(stdout.contains("skipped"), "{stdout}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
